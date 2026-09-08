@@ -12,7 +12,6 @@
 import * as arrow from 'apache-arrow';
 
 import { normalizeBaseUrl } from './normalize_base_url';
-
 import { getPq } from './pqInitializer';
 
 /**

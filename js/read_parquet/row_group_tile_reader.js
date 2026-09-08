@@ -18,7 +18,6 @@ import * as arrow from 'apache-arrow';
 import { concatenate_arrow_tables } from '../vector_tile/concatenate_functions';
 
 import { normalizeBaseUrl } from './normalize_base_url';
-
 import { getPq } from './pqInitializer';
 
 /**
