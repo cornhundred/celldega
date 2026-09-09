@@ -393,3 +393,39 @@ describe('control features', () => {
     expect(opts.featureCatalog).toBeNull();
   });
 });
+
+describe('gene colours from var', () => {
+  let tables;
+
+  beforeAll(() => {
+    tables = loadModule(
+      '../spatialdata/dega_tables.js',
+      ['buildMetaGeneTable', 'defaultGeneColors'],
+      {}
+    );
+  });
+
+  test('a short colour array would break the table, so it must be padded', () => {
+    // var["color"] covers genes only (377 for Xenium pancreas) while the gene list
+    // includes controls (541). Arrow rejects mismatched column lengths outright.
+    const names = ['G0', 'G1', 'CTRL0', 'CTRL1'];
+    const fromVar = ['#111111', '#222222'];
+    const fallback = tables.defaultGeneColors(names.length);
+    const padded = names.map((_, i) => fromVar[i] ?? fallback[i]);
+
+    const table = tables.buildMetaGeneTable({
+      names,
+      mean: [0, 0, 0, 0],
+      std: [0, 0, 0, 0],
+      max: [0, 0, 0, 0],
+      nonZero: [0, 0, 0, 0],
+      colors: padded,
+      isGene: [true, true, false, false],
+    });
+
+    expect(table.numRows).toBe(4);
+    expect(table.getChild('color').get(0)).toBe('#111111');
+    expect(table.getChild('color').get(2)).toMatch(/^#[0-9a-f]{6}$/);
+    expect(table.getChild('is_gene').get(2)).toBe(false);
+  });
+});

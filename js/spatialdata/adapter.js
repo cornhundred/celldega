@@ -11,6 +11,7 @@ import * as arrow from 'apache-arrow';
 
 import { geneStats, geneColumn, geneColumnSparse } from './csr';
 import {
+  defaultGeneColors,
   buildCellMetadataTable,
   buildClusterTable,
   buildMetaClusterTable,
@@ -115,13 +116,23 @@ export class SpatialDataAdapter {
         return out;
       };
 
+      // var["color"] covers the genes only, but the list includes the controls. Passing
+      // a short colour array would build an Arrow table with mismatched column lengths,
+      // so the controls are filled from the same palette the reader uses when a store has
+      // no colours at all.
+      let geneColors = colors ? Array.from(colors, (c) => String(c)) : null;
+      if (geneColors && geneColors.length < names.length) {
+        const fallback = defaultGeneColors(names.length);
+        geneColors = names.map((_, i) => geneColors[i] ?? fallback[i]);
+      }
+
       return buildMetaGeneTable({
         names,
         mean: pad(stats.mean),
         std: pad(stats.std),
         max: pad(stats.max),
         nonZero: pad(stats.nonZero),
-        colors: colors ? Array.from(colors, (c) => String(c)) : null,
+        colors: geneColors,
         isGene: names.map((_, i) => i < genes.length),
       });
     });
