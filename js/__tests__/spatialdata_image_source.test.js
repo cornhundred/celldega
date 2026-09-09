@@ -106,3 +106,96 @@ describe('OME-Zarr image source', () => {
     });
   });
 });
+
+describe('metadata the manifest no longer carries', () => {
+  let SpatialDataImageSource;
+
+  beforeAll(() => {
+    const fs = require('fs');
+    const path = require('path');
+    const source = fs
+      .readFileSync(
+        path.join(__dirname, '../spatialdata/image_source.js'),
+        'utf8'
+      )
+      .replace(/^import \{[^}]*\} from '[^']+';$/gm, '')
+      .replace(/^export const /gm, 'const ')
+      .replace(/^export class /gm, 'class ');
+    const code = `${source}\nmodule.exports = { SpatialDataImageSource };`;
+    const module = { exports: {} };
+    new Function('module', 'exports', code)(module, module.exports);
+    ({ SpatialDataImageSource } = module.exports);
+  });
+
+  // A store read natively has no WebP pyramid, so the manifest carries no image_info,
+  // image_dimensions or max_pyramid_zoom. Everything they held is in the OME-Zarr, and
+  // getting this wrong leaves the viewer with no channels and no extent -- a black square
+  // with cell centroids scattered across the wrong area.
+  const fakeSource = (channels) => ({
+    data: [
+      {
+        shape: [channels.length, 13770, 34155],
+        labels: ['c', 'y', 'x'],
+        tileSize: 4096,
+        dtype: 'Uint16',
+      },
+      {},
+      {},
+      {},
+      {},
+    ],
+    metadata: { omero: { channels } },
+  });
+
+  test('dimensions come from the base level, by axis name', () => {
+    const src = new SpatialDataImageSource(fakeSource([{ label: 'DAPI' }]));
+    // Taken by axis label, not position: shape is c,y,x so width is the last entry.
+    expect(src.dimensions).toEqual({ width: 34155, height: 13770 });
+    expect(src.tileSize).toBe(4096);
+    expect(src.maxPyramidZoom).toBe(4);
+  });
+
+  test('channels carry a name, label, index and a distinct colour', () => {
+    const src = new SpatialDataImageSource(
+      fakeSource([
+        { label: 'DAPI' },
+        { label: 'ATP1A1/CD45/E-Cadherin' },
+        { label: '18S' },
+      ])
+    );
+    const channels = src.channels();
+    expect(channels.map((c) => c.index)).toEqual([0, 1, 2]);
+    // Slashes would otherwise create nested directories and break relative paths.
+    expect(channels.map((c) => c.name)).toEqual([
+      'dapi',
+      'atp1a1_cd45_e_cadherin',
+      '18s',
+    ]);
+    expect(channels.map((c) => c.button_name)).toEqual([
+      'DAPI',
+      'ATP1A1/CD45/E-Cadherin',
+      '18S',
+    ]);
+    // omero gives labels but no colours, so channels must not all come out white.
+    expect(channels.map((c) => c.color)).toEqual([
+      [0, 0, 255],
+      [0, 255, 0],
+      [255, 0, 0],
+    ]);
+  });
+
+  test('an omero colour wins over the default', () => {
+    const src = new SpatialDataImageSource(
+      fakeSource([{ label: 'DAPI', color: '00FF88' }])
+    );
+    expect(src.channels()[0].color).toEqual([0, 255, 136]);
+  });
+
+  test('a channel with no label still gets a usable name', () => {
+    const src = new SpatialDataImageSource(fakeSource([{}, {}]));
+    expect(src.channels().map((c) => c.name)).toEqual([
+      'channel_0',
+      'channel_1',
+    ]);
+  });
+});

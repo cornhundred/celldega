@@ -25,6 +25,21 @@ import { loadOmeZarr } from '@vivjs/loaders';
 const MAX_U8 = 255;
 
 /**
+ * Channel colours used when `omero` gives none, which is the usual case -- SpatialData
+ * populates channel *labels* from the instrument but not colours. Ordered so a typical
+ * Xenium morphology stack (DAPI, membrane, RNA) comes out blue/green/red, matching what
+ * the WebP path used.
+ */
+const DEFAULT_CHANNEL_COLORS = [
+  [0, 0, 255],
+  [0, 255, 0],
+  [255, 0, 0],
+  [255, 255, 0],
+  [255, 0, 255],
+  [0, 255, 255],
+];
+
+/**
  * Map deck.gl's tile z (0 at full resolution, negative as you zoom out) onto a viv
  * resolution index (0 = full resolution).
  */
@@ -145,7 +160,9 @@ export class SpatialDataImageSource {
           .replace(/[^a-z0-9]+/g, '_')
           .replace(/^_|_$/g, ''),
         button_name: label,
-        color: hexToRgbTriple(channel?.color) ?? [255, 255, 255],
+        color:
+          hexToRgbTriple(channel?.color) ??
+          DEFAULT_CHANNEL_COLORS[i % DEFAULT_CHANNEL_COLORS.length],
         index: i,
         window: defaultWindow(channel, this.base.dtype),
       };

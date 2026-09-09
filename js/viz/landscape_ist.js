@@ -189,19 +189,37 @@ async function initializeSpatialDataNative(
     viz_state.spatialdata.images = source;
     viz_state.spatialdata_images = source;
 
-    // Keep the manifest's channel names and colours -- `omero` carries labels but no
-    // colours -- and take only the channel index from the store.
-    const indexByName = new Map(
-      source.channels().map((c) => [c.name, c.index])
-    );
-    const image_info = viz_state.img?.landscape_parameters?.image_info;
-    if (Array.isArray(image_info)) {
-      viz_state.img.landscape_parameters.image_info = image_info.map(
-        (info, position) => ({
-          ...info,
-          index: indexByName.get(info.name) ?? position,
-        })
-      );
+    // A store whose images are read natively has no WebP pyramid, so the manifest carries
+    // no image_info, image_dimensions or max_pyramid_zoom. Everything they held is in the
+    // OME-Zarr, so it is derived here rather than duplicated into the manifest by the
+    // writer. This has to happen before get_landscape_image_info and set_dimensions run.
+    const params = viz_state.img?.landscape_parameters;
+    if (params) {
+      const channels = source.channels();
+      const indexByName = new Map(channels.map((c) => [c.name, c.index]));
+
+      // A manifest that does list channels keeps its names and colours; only the channel
+      // index comes from the store.
+      params.image_info =
+        Array.isArray(params.image_info) && params.image_info.length > 0
+          ? params.image_info.map((info, position) => ({
+              ...info,
+              index: indexByName.get(info.name) ?? position,
+            }))
+          : channels.map(({ name, button_name, color, index }) => ({
+              name,
+              button_name,
+              color,
+              index,
+            }));
+
+      const { width, height } = source.dimensions;
+      params.image_dimensions ??= {
+        width,
+        height,
+        tile_size: source.tileSize,
+      };
+      params.max_pyramid_zoom ??= source.maxPyramidZoom;
     }
   }
 }
