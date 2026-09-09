@@ -62,7 +62,20 @@ export const spatialDataOptionsFromManifest = (manifest, baseUrl) => {
     table: block.table ?? 'table',
     clusterColumn: block.cluster_column ?? null,
     centroidKey: block.centroid_key ?? 'spatial',
-    imageElement: block.image_element ?? null,
+    imageElement:
+      block.image_element ?? manifest?.source?.image_element ?? null,
+    // Centroids in obsm are in the annotating element's units. The shapes element carries
+    // the transform into the display coordinate system, and the profile manifest already
+    // records which element that is.
+    transformElement:
+      block.transform_element ??
+      (manifest?.source?.shapes_element
+        ? `shapes/${manifest.source.shapes_element}`
+        : null),
+    coordinateSystem:
+      block.coordinate_system ??
+      manifest?.source?.coordinate_system ??
+      'global',
     native: new Set(requested.filter((c) => NATIVE_COMPONENTS.includes(c))),
   };
 };

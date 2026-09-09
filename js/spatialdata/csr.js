@@ -49,6 +49,48 @@ export const geneColumn = (csr, geneIndex) => {
 };
 
 /**
+ * The non-zero entries of one gene's column.
+ *
+ * The CBG Parquet stores only non-zeros, and the viewer's expression path expects the same,
+ * so this avoids materialising a dense array per gene.
+ *
+ * @param {{data, indices, indptr, shape}} csr
+ * @param {number} geneIndex
+ * @returns {{cellIds: Uint32Array, values: Float32Array}} cellIds are positions in `obs`
+ */
+export const geneColumnSparse = (csr, geneIndex) => {
+  const { data, indices, indptr, shape } = csr;
+  const nCells = shape[0];
+
+  // Two passes to size the output exactly; counting is far cheaper than growing an array.
+  let count = 0;
+  for (let cell = 0; cell < nCells; cell += 1) {
+    const start = indptr[cell];
+    const end = indptr[cell + 1];
+    if (end > start && searchRow(indices, start, end, geneIndex) !== -1)
+      count += 1;
+  }
+
+  const cellIds = new Uint32Array(count);
+  const values = new Float32Array(count);
+  let out = 0;
+  for (let cell = 0; cell < nCells; cell += 1) {
+    const start = indptr[cell];
+    const end = indptr[cell + 1];
+    if (end > start) {
+      const hit = searchRow(indices, start, end, geneIndex);
+      if (hit !== -1) {
+        cellIds[out] = cell;
+        values[out] = data[hit];
+        out += 1;
+      }
+    }
+  }
+
+  return { cellIds, values };
+};
+
+/**
  * Per-gene summary statistics, matching the columns of DegaFiles' `meta_gene.parquet`.
  *
  * One pass over the non-zeros. Zeros are included in `mean` and `std` (they are real

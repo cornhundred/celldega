@@ -133,7 +133,7 @@ export class SpatialDataImageSource {
    */
   channels() {
     const omero = this.source.metadata?.omero;
-    const labels = this.base.labels;
+    const { labels } = this.base;
     const count = this.base.shape[labels.indexOf('c')] ?? 1;
 
     return Array.from({ length: count }, (_, i) => {
@@ -159,7 +159,7 @@ export class SpatialDataImageSource {
    * needs no changes.
    */
   makeGetTileData(channelIndex, window) {
-    const levels = this.levels;
+    const { levels } = this;
     const intensity = window ?? this.channels()[channelIndex].window;
 
     return async ({ index, signal }) => {

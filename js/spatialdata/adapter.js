@@ -7,7 +7,9 @@
  * deliberately not handled -- those stay as the row-grouped Parquets and the WebP pyramid.
  */
 
-import { geneStats, geneColumn } from './csr';
+import * as arrow from 'apache-arrow';
+
+import { geneStats, geneColumn, geneColumnSparse } from './csr';
 import {
   buildCellMetadataTable,
   buildClusterTable,
@@ -178,6 +180,29 @@ export class SpatialDataAdapter {
       }
 
       return buildMetaClusterTable({ clusters, palette });
+    });
+  }
+
+  /**
+   * Duck-types `CBGRowGroupReader.readGene`, so `viz_state.row_group_readers.cbg` can be
+   * this adapter and no expression call site changes.
+   *
+   * Returns the non-zero entries only, with `cell_id` as the cell's position in `obs` --
+   * the same integer index the CBG Parquet uses, and the same schema
+   * `getGeneExpressionColumns` looks for.
+   */
+  async readGene(geneName) {
+    const [names, csr] = await Promise.all([
+      this.store.geneNames(),
+      this.store.csr(),
+    ]);
+    const index = names.indexOf(geneName);
+    if (index === -1) return null;
+
+    const { cellIds, values } = geneColumnSparse(csr, index);
+    return new arrow.Table({
+      cell_id: arrow.makeVector(cellIds),
+      expression: arrow.makeVector(values),
     });
   }
 

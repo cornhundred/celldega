@@ -93,6 +93,9 @@ import {
 //   getVersion as getParquetWasmVersion,
 // } from '../read_parquet/row_group_poc';
 import { RowGroupTileReader } from '../read_parquet/row_group_tile_reader';
+import { SpatialDataAdapter } from '../spatialdata/adapter';
+import { SpatialDataImageSource } from '../spatialdata/image_source';
+import { spatialDataOptionsFromManifest } from '../spatialdata/manifest_options';
 import { initialize_nbhd_editor } from '../ui/nbhd_editor';
 import { toggle_slider, set_image_layer_sliders } from '../ui/sliders';
 import { get_img_layer_visible } from '../ui/text_buttons';
@@ -130,6 +133,70 @@ import { update_ist_landscape_from_cgm } from '../widget_interactions/update_ist
  * @param {string} base_url - Base URL for the landscape files
  * @returns {Promise<void>}
  */
+/**
+ * Wire up native SpatialData reading for the components the manifest opts in to.
+ *
+ * Each component is independent: a store can serve its metadata natively while still using
+ * the WebP pyramid, or vice versa. Anything not opted in keeps reading the derived files.
+ *
+ * @param {Object} viz_state
+ * @param {string} base_url - the profile directory, which the store URL resolves against
+ * @param {Object} landscapeParams - parsed landscape_parameters.json
+ */
+async function initializeSpatialDataNative(
+  viz_state,
+  base_url,
+  landscapeParams
+) {
+  const options_ = spatialDataOptionsFromManifest(landscapeParams, base_url);
+  if (!options_) return;
+
+  viz_state.spatialdata = { options: options_ };
+
+  if (options_.native.has('metadata') || options_.native.has('cbg')) {
+    const adapter = new SpatialDataAdapter(options_.storeUrl, {
+      table: options_.table,
+      clusterColumn: options_.clusterColumn,
+      centroidKey: options_.centroidKey,
+      // Centroids live in the element's own units (microns for Xenium) while everything
+      // else is in display pixels; without this cells land at 1/4.7 scale.
+      transformElement: options_.transformElement,
+      coordinateSystem: options_.coordinateSystem,
+    });
+    viz_state.spatialdata.adapter = adapter;
+
+    // The adapter duck-types CBGRowGroupReader.readGene, so the expression path is
+    // unchanged. Overwrites the Parquet reader deliberately when both are available.
+    if (options_.native.has('cbg')) {
+      viz_state.row_group_readers.cbg = adapter;
+    }
+  }
+
+  if (options_.native.has('images') && options_.imageElement) {
+    const source = await SpatialDataImageSource.open(
+      options_.storeUrl,
+      options_.imageElement
+    );
+    viz_state.spatialdata.images = source;
+    viz_state.spatialdata_images = source;
+
+    // Keep the manifest's channel names and colours -- `omero` carries labels but no
+    // colours -- and take only the channel index from the store.
+    const indexByName = new Map(
+      source.channels().map((c) => [c.name, c.index])
+    );
+    const image_info = viz_state.img?.landscape_parameters?.image_info;
+    if (Array.isArray(image_info)) {
+      viz_state.img.landscape_parameters.image_info = image_info.map(
+        (info, position) => ({
+          ...info,
+          index: indexByName.get(info.name) ?? position,
+        })
+      );
+    }
+  }
+}
+
 async function initializeRowGroupReaders(viz_state, base_url) {
   const landscapeParams = viz_state.img.landscape_parameters;
 
@@ -194,6 +261,11 @@ async function initializeRowGroupReaders(viz_state, base_url) {
     );
     await viz_state.row_group_readers.cbg.initialize();
   }
+
+  // Read what the store already holds, instead of the derived files, for whichever
+  // components the manifest opts in to. A manifest with no `spatialdata` block gets
+  // nothing here and behaves exactly as before, which is what keeps DegaFiles working.
+  await initializeSpatialDataNative(viz_state, base_url, landscapeParams);
 
   // Initialize image row group readers for each channel
   if (rowGroupFiles.images) {
@@ -577,7 +649,8 @@ export const landscape_ist = async (
     viz_state.genes,
     base_url,
     viz_state.seg.version,
-    viz_state.aws
+    viz_state.aws,
+    viz_state.spatialdata?.adapter ?? null
   );
 
   await set_cluster_metadata(viz_state);
