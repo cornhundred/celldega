@@ -1,5 +1,11 @@
 export { SpatialDataStore } from './spatialdata_store';
 export { SpatialDataAdapter } from './adapter';
+export {
+  SpatialDataImageSource,
+  zoomToLevel,
+  defaultWindow,
+  tileToRgba,
+} from './image_source';
 export { geneColumn, geneStats } from './csr';
 export {
   buildCellMetadataTable,

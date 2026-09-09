@@ -12,12 +12,13 @@
  *     "table":          "table",
  *     "cluster_column": "cell_type",  // optional obs column
  *     "centroid_key":   "spatial",    // optional obsm key
- *     "native": ["metadata", "cbg"]   // which components to read from Zarr
+ *     "native": ["metadata", "cbg"],  // which components to read from Zarr
+ *     "image_element": "morphology_focus"
  *   }
  */
 
 /** Components that may be served natively; anything absent falls back to Parquet. */
-export const NATIVE_COMPONENTS = ['metadata', 'cbg'];
+export const NATIVE_COMPONENTS = ['metadata', 'cbg', 'images'];
 
 /**
  * Resolve a possibly relative store URL against the profile's base URL.
@@ -61,6 +62,7 @@ export const spatialDataOptionsFromManifest = (manifest, baseUrl) => {
     table: block.table ?? 'table',
     clusterColumn: block.cluster_column ?? null,
     centroidKey: block.centroid_key ?? 'spatial',
+    imageElement: block.image_element ?? null,
     native: new Set(requested.filter((c) => NATIVE_COMPONENTS.includes(c))),
   };
 };

@@ -345,7 +345,7 @@ describe('manifest opt-in', () => {
     expect(opts.table).toBe('table');
     expect(opts.centroidKey).toBe('spatial');
     expect(opts.clusterColumn).toBeNull();
-    expect([...opts.native].sort()).toEqual(['cbg', 'metadata']);
+    expect([...opts.native].sort()).toEqual(['cbg', 'images', 'metadata']);
   });
 
   test('unknown components are ignored rather than trusted', () => {
@@ -353,6 +353,6 @@ describe('manifest opt-in', () => {
       { spatialdata: { native: ['metadata', 'images', 'nonsense'] } },
       'https://host/s.zarr/visualization/grid_files_v1'
     );
-    expect([...opts.native]).toEqual(['metadata']);
+    expect([...opts.native]).toEqual(['metadata', 'images']);
   });
 });
