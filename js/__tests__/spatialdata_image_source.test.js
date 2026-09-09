@@ -199,3 +199,78 @@ describe('metadata the manifest no longer carries', () => {
     ]);
   });
 });
+
+describe('discovering the image element', () => {
+  let SpatialDataStore;
+
+  beforeAll(() => {
+    const fs = require('fs');
+    const path = require('path');
+    const source = fs
+      .readFileSync(
+        path.join(__dirname, '../spatialdata/spatialdata_store.js'),
+        'utf8'
+      )
+      .replace(
+        /^import \* as (\w+) from '[^']+';$/gm,
+        // Only imageElements() is under test and it uses plain fetch, so zarrita just
+        // has to be constructible.
+        'const $1 = { FetchStore: function () {}, root: () => ({ resolve: () => ({}) }) };'
+      )
+      .replace(/^export const /gm, 'const ')
+      .replace(/^export class /gm, 'class ');
+    const code = `${source}\nmodule.exports = { SpatialDataStore };`;
+    const module = { exports: {} };
+    new Function('module', 'exports', code)(module, module.exports);
+    ({ SpatialDataStore } = module.exports);
+  });
+
+  const withRootJson = (body) => {
+    global.fetch = jest.fn(async () => ({
+      ok: body !== null,
+      json: async () => body,
+    }));
+    return new SpatialDataStore('http://host/s.zarr');
+  };
+
+  // Removing the WebP writer also removed `image_element` from the manifest, leaving the
+  // reader with nothing to open -- a black square with no channels. SpatialData's
+  // consolidated metadata lists every node, so the store can be asked instead.
+  test('finds elements from consolidated metadata', async () => {
+    const store = withRootJson({
+      consolidated_metadata: {
+        metadata: {
+          images: {},
+          'images/morphology_focus': {},
+          'images/morphology_focus/s0': {},
+          'images/morphology_focus/s1': {},
+          'images/he_stain': {},
+          points: {},
+          'points/transcripts': {},
+        },
+      },
+    });
+    // Pyramid levels below the element must not be mistaken for elements.
+    expect(await store.imageElements()).toEqual([
+      'he_stain',
+      'morphology_focus',
+    ]);
+  });
+
+  test('a store with no images yields nothing rather than guessing', async () => {
+    const store = withRootJson({
+      consolidated_metadata: {
+        metadata: { points: {}, 'points/transcripts': {} },
+      },
+    });
+    expect(await store.imageElements()).toEqual([]);
+  });
+
+  test('no consolidated metadata is not an error', async () => {
+    expect(await withRootJson({ zarr_format: 3 }).imageElements()).toEqual([]);
+  });
+
+  test('a failed fetch is not an error', async () => {
+    expect(await withRootJson(null).imageElements()).toEqual([]);
+  });
+});

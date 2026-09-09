@@ -96,6 +96,7 @@ import { RowGroupTileReader } from '../read_parquet/row_group_tile_reader';
 import { SpatialDataAdapter } from '../spatialdata/adapter';
 import { SpatialDataImageSource } from '../spatialdata/image_source';
 import { spatialDataOptionsFromManifest } from '../spatialdata/manifest_options';
+import { SpatialDataStore } from '../spatialdata/spatialdata_store';
 import { initialize_nbhd_editor } from '../ui/nbhd_editor';
 import { toggle_slider, set_image_layer_sliders } from '../ui/sliders';
 import { get_img_layer_visible } from '../ui/text_buttons';
@@ -181,10 +182,20 @@ async function initializeSpatialDataNative(
     }
   }
 
-  if (options_.native.has('images') && options_.imageElement) {
+  if (options_.native.has('images')) {
+    // The manifest need not name the image element: SpatialData's consolidated metadata
+    // lists the store's nodes, so the reader can find it. Naming one in the manifest
+    // still wins, for a store with several.
+    const element =
+      options_.imageElement ??
+      (await viz_state.spatialdata.adapter?.store.imageElements())?.[0] ??
+      (await new SpatialDataStore(options_.storeUrl).imageElements())[0];
+
+    if (!element) return;
+
     const source = await SpatialDataImageSource.open(
       options_.storeUrl,
-      options_.imageElement
+      element
     );
     viz_state.spatialdata.images = source;
     viz_state.spatialdata_images = source;

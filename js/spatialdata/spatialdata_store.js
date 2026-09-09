@@ -251,6 +251,43 @@ export class SpatialDataStore {
     );
   }
 
+  // ------------------------------------------------------------- discovery
+
+  /**
+   * Names of the store's image elements.
+   *
+   * SpatialData writes consolidated metadata at the root, which lists every node, so a
+   * client can discover what a store holds without being told. That is what lets the
+   * manifest stay silent about images: the store already knows.
+   *
+   * Returns an empty list when there is no consolidated metadata, rather than guessing.
+   *
+   * @returns {Promise<string[]>} element names, sorted
+   */
+  async imageElements() {
+    return this._once('imageElements', async () => {
+      let root;
+      try {
+        const response = await fetch(`${this.url}/zarr.json`);
+        if (!response.ok) return [];
+        root = await response.json();
+      } catch {
+        return [];
+      }
+
+      const nodes = root?.consolidated_metadata?.metadata;
+      if (!nodes) return [];
+
+      // Keep `images/<name>`, drop the pyramid levels below it.
+      const names = new Set();
+      for (const key of Object.keys(nodes)) {
+        const parts = key.split('/');
+        if (parts.length === 2 && parts[0] === 'images') names.add(parts[1]);
+      }
+      return [...names].sort();
+    });
+  }
+
   // ------------------------------------------------------- coordinate systems
 
   /**
