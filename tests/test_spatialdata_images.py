@@ -18,6 +18,7 @@ import xarray as xr
 
 from celldega.pre.spatialdata_images import write_webp_pyramid
 
+
 TILE = 128
 WIDTH, HEIGHT = 500, 300
 

@@ -15,16 +15,17 @@ from __future__ import annotations
 import io
 import json
 import math
-import shutil
 from pathlib import Path
+import shutil
 from typing import Any
 
 import numpy as np
+from numpy.typing import NDArray
 import pyarrow as pa
 import pyarrow.parquet as pq
-from numpy.typing import NDArray
 
-__all__ = ["write_webp_pyramid", "spatialdata_to_dega_images", "DEFAULT_IMAGE_TILE_SIZE"]
+
+__all__ = ["DEFAULT_IMAGE_TILE_SIZE", "spatialdata_to_dega_images", "write_webp_pyramid"]
 
 #: DeepZoom tile size used by Celldega's image pipeline.
 DEFAULT_IMAGE_TILE_SIZE = 512
