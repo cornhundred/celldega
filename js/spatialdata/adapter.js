@@ -92,11 +92,15 @@ export class SpatialDataAdapter {
    */
   async metaGeneTable() {
     return this._once('metaGene', async () => {
-      const [genes, csr, colors] = await Promise.all([
+      const [genes, precomputed, colors] = await Promise.all([
         this.store.geneNames(),
-        this.store.csr(),
+        this.store.geneStatistics(),
         this.store.varColumn(GENE_COLOR_COLUMN),
       ]);
+
+      // Statistics in `var` mean the gene list costs a few hundred KB. Without them the
+      // whole matrix has to be read just to populate it, whatever its layout.
+      const stats = precomputed ?? geneStats(await this.store.csr());
 
       // Controls (negative probes, unassigned codewords) are not in `var`, but they do
       // carry feature codes above every gene. Appending them keeps
@@ -104,7 +108,6 @@ export class SpatialDataAdapter {
       const extra = this.featureCatalog?.extra_features ?? [];
       const names = extra.length ? [...genes, ...extra] : genes;
 
-      const stats = geneStats(csr);
       const pad = (values) => {
         if (!extra.length) return values;
         const out = new Float64Array(names.length);
@@ -208,17 +211,21 @@ export class SpatialDataAdapter {
    * `getGeneExpressionColumns` looks for.
    */
   async readGene(geneName) {
-    const [names, csr] = await Promise.all([
-      this.store.geneNames(),
-      this.store.csr(),
-    ]);
+    const names = await this.store.geneNames();
     const index = names.indexOf(geneName);
     if (index === -1) return null;
 
-    const { cellIds, values } = geneColumnSparse(csr, index);
+    // A gene-major layer turns this into a slice of one or two chunks. Falling back to
+    // the CSR matrix means downloading all of it, which does not scale past a few tens
+    // of MB -- so the layer is what makes large stores usable.
+    let column = await this.store.geneFromCscLayer(index);
+    if (!column) {
+      column = geneColumnSparse(await this.store.csr(), index);
+    }
+
     return new arrow.Table({
-      cell_id: arrow.makeVector(cellIds),
-      expression: arrow.makeVector(values),
+      cell_id: arrow.makeVector(column.cellIds),
+      expression: arrow.makeVector(column.values),
     });
   }
 

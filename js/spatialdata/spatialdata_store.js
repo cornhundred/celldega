@@ -330,6 +330,64 @@ export class SpatialDataStore {
   // ---------------------------------------------------------------------- X
 
   /**
+   * A single gene's non-zero entries, read from the gene-major (CSC) layer.
+   *
+   * This is the whole point of the layer: `indptr[g]` and `indptr[g+1]` bound the gene's
+   * slice, so only the chunks covering it are fetched -- roughly 6,600 non-zeros for
+   * Xenium Prime skin, against 33 M for the whole matrix. Returns null when the store has
+   * no CSC layer, and the caller falls back to reading X whole.
+   *
+   * @param {number} geneIndex - column index, i.e. position in `var`
+   * @param {string} [layer]
+   * @returns {Promise<{cellIds: Uint32Array, values: Float32Array} | null>}
+   */
+  async geneFromCscLayer(geneIndex, layer = 'X_csc') {
+    const base = this._tablePath('layers', layer);
+
+    const indptr = await this._once(`csc:indptr:${layer}`, async () => {
+      const group = await this._openGroup(base).catch(() => null);
+      if (!group || group.attrs?.['encoding-type'] !== 'csc_matrix')
+        return null;
+      return this._readArray(`${base}/indptr`);
+    });
+    if (!indptr) return null;
+
+    const start = Number(indptr[geneIndex]);
+    const end = Number(indptr[geneIndex + 1]);
+    if (!(end > start)) {
+      return { cellIds: new Uint32Array(0), values: new Float32Array(0) };
+    }
+
+    const [dataArr, indicesArr] = await Promise.all([
+      this._openArray(`${base}/data`),
+      this._openArray(`${base}/indices`),
+    ]);
+    const [values, cells] = await Promise.all([
+      zarr.get(dataArr, [zarr.slice(start, end)]),
+      zarr.get(indicesArr, [zarr.slice(start, end)]),
+    ]);
+
+    return {
+      cellIds: Uint32Array.from(cells.data),
+      values: Float32Array.from(values.data),
+    };
+  }
+
+  /** Per-gene statistics precomputed into `var`, or null when absent. */
+  async geneStatistics() {
+    return this._once('geneStats', async () => {
+      const columns = await this.varColumns();
+      const needed = ['mean', 'std', 'max', 'non_zero'];
+      if (!needed.every((c) => columns.includes(c))) return null;
+
+      const [mean, std, max, nonZero] = await Promise.all(
+        needed.map((c) => this.varColumn(c))
+      );
+      return { mean, std, max, nonZero };
+    });
+  }
+
+  /**
    * The expression matrix as CSR (rows = cells, columns = genes).
    *
    * SpatialData/AnnData store `X` cell-major, so reading it whole is the only way to get
