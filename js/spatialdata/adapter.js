@@ -19,8 +19,14 @@ import {
 } from './dega_tables';
 import { SpatialDataStore } from './spatialdata_store';
 
-/** `var` column holding a hex colour per gene, if the writer put one there. */
-const GENE_COLOR_COLUMN = 'color';
+/**
+ * `uns` key holding one hex colour per gene, in `var` order.
+ *
+ * AnnData's existing convention is a `<name>_colors` list in `uns` aligned to an ordering,
+ * which is what scanpy writes for obs categoricals. Gene colours follow the same shape
+ * rather than adding a `var` column.
+ */
+const GENE_COLORS_KEY = 'gene_colors';
 
 /** Shown when the store has no clustering, matching what the profile writes today. */
 const UNCLUSTERED = 'unclustered';
@@ -96,7 +102,7 @@ export class SpatialDataAdapter {
       const [genes, precomputed, colors] = await Promise.all([
         this.store.geneNames(),
         this.store.geneStatistics(),
-        this.store.varColumn(GENE_COLOR_COLUMN),
+        this.store.unsArray(GENE_COLORS_KEY),
       ]);
 
       // Statistics in `var` mean the gene list costs a few hundred KB. Without them the
