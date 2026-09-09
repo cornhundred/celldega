@@ -100,6 +100,7 @@ import { initialize_nbhd_editor } from '../ui/nbhd_editor';
 import { toggle_slider, set_image_layer_sliders } from '../ui/sliders';
 import { get_img_layer_visible } from '../ui/text_buttons';
 import { make_ist_ui_container } from '../ui/ui_containers';
+import { announceBuild } from '../utils/build_info';
 import {
   createEmptyCellCompact,
   createEmptyTrxCompact,
@@ -149,7 +150,14 @@ async function initializeSpatialDataNative(
   landscapeParams
 ) {
   const options_ = spatialDataOptionsFromManifest(landscapeParams, base_url);
-  if (!options_) return;
+  if (!options_) {
+    announceBuild('reading DegaFiles / profile Parquets');
+    return;
+  }
+
+  announceBuild(
+    `reading [${[...options_.native].join(', ')}] natively from ${options_.storeUrl}`
+  );
 
   viz_state.spatialdata = { options: options_ };
 
