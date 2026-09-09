@@ -200,6 +200,36 @@ export class SpatialDataStore {
     return this._readArray(path);
   }
 
+  /**
+   * Read a categorical while retaining its stored category order.
+   *
+   * Decoded cell values alone are insufficient for Scanpy palettes: colors in
+   * `uns["<column>_colors"]` align with the categorical's categories, including
+   * unused categories, rather than sorted observed values.
+   */
+  async _readCategoricalDataFrameColumn(groupPath, column) {
+    const path = `${groupPath}/${column}`;
+    let node;
+    try {
+      node = await this._openNode(path);
+    } catch {
+      return null;
+    }
+    if (node.attrs?.['encoding-type'] !== 'categorical') return null;
+
+    const [codes, rawCategories] = await Promise.all([
+      this._readArray(`${path}/codes`),
+      this._readArray(`${path}/categories`),
+    ]);
+    const categories = Array.from(rawCategories, (v) => String(v));
+    const values = new Array(codes.length);
+    for (let i = 0; i < codes.length; i += 1) {
+      const code = Number(codes[i]);
+      values[i] = code === CATEGORY_NA ? null : categories[code];
+    }
+    return { values, categories, codes };
+  }
+
   /** Names of the columns in an AnnData dataframe group, index excluded. */
   async _dataFrameColumns(groupPath) {
     const group = await this._openGroup(groupPath);
@@ -248,6 +278,13 @@ export class SpatialDataStore {
   async obsColumn(name) {
     return this._once(`obs:${name}`, () =>
       this._readDataFrameColumn(this._tablePath('obs'), name)
+    );
+  }
+
+  /** A categorical obs column with values and categories in stored order. */
+  async obsCategorical(name) {
+    return this._once(`obs-categorical:${name}`, () =>
+      this._readCategoricalDataFrameColumn(this._tablePath('obs'), name)
     );
   }
 

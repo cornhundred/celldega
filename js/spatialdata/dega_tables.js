@@ -75,7 +75,7 @@ const hslToHex = (h, s, l) => {
 };
 
 /**
- * Evenly spaced fallback colours, used when the store has no `var["color"]`.
+ * Evenly spaced fallback colours, used when the store has no `uns["gene_colors"]`.
  *
  * Deterministic, so a gene keeps its colour between reloads. Golden-ratio hue stepping
  * keeps neighbouring genes visually distinct instead of running through a smooth ramp.

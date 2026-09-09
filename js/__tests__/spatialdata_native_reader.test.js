@@ -8,7 +8,7 @@
  *  - a manifest with no `spatialdata` block must leave DegaFiles completely alone;
  *  - a coordinate transform that cannot be reduced must raise, not silently drop rotation.
  *
- * The adapter's network path is covered separately by js/spatialdata/__validate__.mjs,
+ * The adapter's network path is covered separately by scripts/validate_spatialdata_reader.mjs,
  * which runs against a real store.
  */
 
@@ -394,7 +394,26 @@ describe('control features', () => {
   });
 });
 
-describe('gene colours from var', () => {
+describe('categorical palettes', () => {
+  let categoricalPalette;
+
+  beforeAll(() => {
+    ({ categoricalPalette } = loadModule('../spatialdata/adapter.js', [
+      'categoricalPalette',
+    ]));
+  });
+
+  test('uses stored category order, including unused categories', () => {
+    expect(
+      categoricalPalette(
+        ['B', 'A', 'unused'],
+        ['#ff0000', '#00ff00', '#0000ff']
+      )
+    ).toEqual({ B: '#ff0000', A: '#00ff00', unused: '#0000ff' });
+  });
+});
+
+describe('gene colour palette padding', () => {
   let tables;
 
   beforeAll(() => {
@@ -406,7 +425,7 @@ describe('gene colours from var', () => {
   });
 
   test('a short colour array would break the table, so it must be padded', () => {
-    // var["color"] covers genes only (377 for Xenium pancreas) while the gene list
+    // uns["gene_colors"] covers genes only (377 for Xenium pancreas) while the gene list
     // includes controls (541). Arrow rejects mismatched column lengths outright.
     const names = ['G0', 'G1', 'CTRL0', 'CTRL1'];
     const fromVar = ['#111111', '#222222'];

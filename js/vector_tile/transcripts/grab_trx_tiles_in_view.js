@@ -107,8 +107,8 @@ const materializeTranscriptBuffers = (tables, viz_state) => {
 
     for (const chunk of chunks) {
       // chunk.values is the flat, already-interleaved Arrow child buffer
-      // ([x0,y0,x1,y1,...]), whether it holds float32 (DegaFiles) or uint32
-      // (SpatialData display_xy). No x/y zipping happens here.
+      // ([x0,y0,x1,y1,...]); current SpatialData display_xy is float32.
+      // This copies into Float64 storage but does not zip separate x/y columns.
       positions.set(chunk.values, coordinateOffset);
       coordinateOffset += chunk.values.length;
     }

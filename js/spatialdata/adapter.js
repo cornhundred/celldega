@@ -3,8 +3,8 @@
  *
  * This is the seam for the `adapt_dega` work: everything the viewer used to read from
  * `meta_gene.parquet`, `cell_metadata.parquet` and `cell_clusters/` is derived here from
- * `var`, `obs`, `obsm` and `X` instead. Transcripts, cell boundaries and images are
- * deliberately not handled -- those stay as the row-grouped Parquets and the WebP pyramid.
+ * `var`, `obs`, `obsm`, `uns` and expression arrays instead. Transcripts and boundaries
+ * remain display Parquets. Native OME-Zarr images are handled by image_source.js.
  */
 
 import * as arrow from 'apache-arrow';
@@ -22,14 +22,19 @@ import { SpatialDataStore } from './spatialdata_store';
 /**
  * `uns` key holding one hex colour per gene, in `var` order.
  *
- * AnnData's existing convention is a `<name>_colors` list in `uns` aligned to an ordering,
- * which is what scanpy writes for obs categoricals. Gene colours follow the same shape
- * rather than adding a `var` column.
+ * This borrows Scanpy's categorical palette shape. The gene-specific key and var-order
+ * alignment are profile conventions; AnnData does not realign this list on gene slicing.
  */
 const GENE_COLORS_KEY = 'gene_colors';
 
 /** Shown when the store has no clustering, matching what the profile writes today. */
 const UNCLUSTERED = 'unclustered';
+
+/** Map a Scanpy color list to categorical labels without sorting the labels. */
+export const categoricalPalette = (categories, colors) =>
+  Object.fromEntries(
+    Array.from(categories, (name, i) => [String(name), colors[i]])
+  );
 
 export class SpatialDataAdapter {
   /**
@@ -93,9 +98,8 @@ export class SpatialDataAdapter {
   /**
    * Stand-in for `meta_gene.parquet`.
    *
-   * Statistics are computed from `X` rather than read, because AnnData does not carry
-   * them. That means the whole matrix is fetched -- see `csr()` for why that is cheaper
-   * than it sounds.
+   * Uses precomputed var statistics when present. Otherwise it computes them from the
+   * whole CSR X matrix, which requires downloading all matrix chunks.
    */
   async metaGeneTable() {
     return this._once('metaGene', async () => {
@@ -122,7 +126,7 @@ export class SpatialDataAdapter {
         return out;
       };
 
-      // var["color"] covers the genes only, but the list includes the controls. Passing
+      // uns["gene_colors"] covers the genes only, but the list includes the controls. Passing
       // a short colour array would build an Arrow table with mismatched column lengths,
       // so the controls are filled from the same palette the reader uses when a store has
       // no colours at all.
@@ -200,18 +204,12 @@ export class SpatialDataAdapter {
       let palette = null;
 
       if (this.clusterColumn) {
-        const colors = await this.store.unsArray(
-          `${this.clusterColumn}_colors`
-        );
-        const categories = await this.store.obsColumn(this.clusterColumn);
-        if (colors && categories) {
-          // uns colours are aligned to the category order, not to the cells.
-          const seen = [
-            ...new Set(Array.from(categories, (v) => String(v))),
-          ].sort();
-          palette = Object.fromEntries(
-            seen.map((name, i) => [name, colors[i]])
-          );
+        const [colors, categorical] = await Promise.all([
+          this.store.unsArray(`${this.clusterColumn}_colors`),
+          this.store.obsCategorical(this.clusterColumn),
+        ]);
+        if (colors && categorical) {
+          palette = categoricalPalette(categorical.categories, colors);
         }
       }
 

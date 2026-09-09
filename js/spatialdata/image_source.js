@@ -15,8 +15,9 @@
  *
  * The cost is real and worth stating: for Xenium pancreas the canonical uint16 pyramid is
  * 2.9 GB against 25 MB for the WebP one, and a single full-resolution chunk is 16 MB --
- * more than an entire channel's WebP pyramid. This path buys true 16-bit windowing, not
- * speed. WebP remains the default.
+ * more than an entire channel's WebP pyramid. Source tiles are windowed to uint8 RGBA
+ * before rendering. Fresh SpatialData profiles use this native path by default; WebP
+ * remains an optional derived export and the existing DegaFiles path.
  */
 
 import { loadOmeZarr } from '@vivjs/loaders';

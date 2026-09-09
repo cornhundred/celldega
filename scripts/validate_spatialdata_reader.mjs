@@ -1,7 +1,7 @@
-// Validate the SpatialData adapter (dev script, run from the repo root) against a real store, cross-checking the derived
-// tables against the Parquet files the current writer produces.
+// Inspect the SpatialData adapter against a real store. This diagnostic prints schemas,
+// values and timings; it is not an assertion-based comparison or a browser rendering test.
 //
-//   python -m http.server 8896 --bind 127.0.0.1 --directory ../../../data
+//   python -m http.server 8896 --bind 127.0.0.1 --directory ../data
 //   npx esbuild scripts/validate_spatialdata_reader.mjs --bundle --platform=node --format=esm --outfile=/tmp/v.mjs && node /tmp/v.mjs
 import { SpatialDataAdapter } from '../js/spatialdata/adapter.js';
 import { geneColumn } from '../js/spatialdata/csr.js';
