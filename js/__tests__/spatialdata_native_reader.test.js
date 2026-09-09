@@ -356,3 +356,40 @@ describe('manifest opt-in', () => {
     expect([...opts.native]).toEqual(['metadata', 'images']);
   });
 });
+
+describe('control features', () => {
+  let spatialDataOptionsFromManifest;
+
+  beforeAll(() => {
+    ({ spatialDataOptionsFromManifest } = loadModule(
+      '../spatialdata/manifest_options.js',
+      ['spatialDataOptionsFromManifest']
+    ));
+  });
+
+  test('the feature catalog is carried through from the manifest', () => {
+    // feature_code indexes genes-then-controls, but `var` holds only the genes. Xenium
+    // pancreas reaches code 539 against 377 genes, so without this the control
+    // transcripts index past the end of the colour table and silently lose their colour.
+    const opts = spatialDataOptionsFromManifest(
+      {
+        spatialdata: {},
+        feature_catalog: {
+          n_genes: 377,
+          extra_features: ['NegControlProbe_00042', 'UnassignedCodeword_0001'],
+        },
+      },
+      'https://host/s.zarr/visualization/grid_files_v1'
+    );
+    expect(opts.featureCatalog.n_genes).toBe(377);
+    expect(opts.featureCatalog.extra_features).toHaveLength(2);
+  });
+
+  test('a manifest without one is still fine', () => {
+    const opts = spatialDataOptionsFromManifest(
+      { spatialdata: {} },
+      'https://host/s.zarr/visualization/grid_files_v1'
+    );
+    expect(opts.featureCatalog).toBeNull();
+  });
+});

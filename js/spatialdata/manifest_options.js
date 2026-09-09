@@ -77,5 +77,9 @@ export const spatialDataOptionsFromManifest = (manifest, baseUrl) => {
       manifest?.source?.coordinate_system ??
       'global',
     native: new Set(requested.filter((c) => NATIVE_COMPONENTS.includes(c))),
+    // `feature_code` indexes genes-then-controls, but `var` holds only the genes. Xenium
+    // pancreas reaches code 539 against 377 genes, so without the control names those
+    // transcripts index past the end of the colour table and silently lose their colour.
+    featureCatalog: manifest?.feature_catalog ?? null,
   };
 };

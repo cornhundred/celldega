@@ -166,6 +166,7 @@ async function initializeSpatialDataNative(
       table: options_.table,
       clusterColumn: options_.clusterColumn,
       centroidKey: options_.centroidKey,
+      featureCatalog: options_.featureCatalog,
       // Centroids live in the element's own units (microns for Xenium) while everything
       // else is in display pixels; without this cells land at 1/4.7 scale.
       transformElement: options_.transformElement,

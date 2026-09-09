@@ -41,6 +41,7 @@ export class SpatialDataAdapter {
     this.clusterColumn = opts.clusterColumn ?? null;
     this.centroidKey = opts.centroidKey ?? 'spatial';
     this.transformElement = opts.transformElement ?? null;
+    this.featureCatalog = opts.featureCatalog ?? null;
     this.coordinateSystem = opts.coordinateSystem ?? 'global';
     this._cache = new Map();
   }
@@ -91,19 +92,34 @@ export class SpatialDataAdapter {
    */
   async metaGeneTable() {
     return this._once('metaGene', async () => {
-      const [names, csr, colors] = await Promise.all([
+      const [genes, csr, colors] = await Promise.all([
         this.store.geneNames(),
         this.store.csr(),
         this.store.varColumn(GENE_COLOR_COLUMN),
       ]);
-      const { mean, std, max, nonZero } = geneStats(csr);
+
+      // Controls (negative probes, unassigned codewords) are not in `var`, but they do
+      // carry feature codes above every gene. Appending them keeps
+      // `feature_code === row position`, which is what the transcript layer indexes.
+      const extra = this.featureCatalog?.extra_features ?? [];
+      const names = extra.length ? [...genes, ...extra] : genes;
+
+      const stats = geneStats(csr);
+      const pad = (values) => {
+        if (!extra.length) return values;
+        const out = new Float64Array(names.length);
+        out.set(values.subarray(0, genes.length));
+        return out;
+      };
+
       return buildMetaGeneTable({
         names,
-        mean,
-        std,
-        max,
-        nonZero,
+        mean: pad(stats.mean),
+        std: pad(stats.std),
+        max: pad(stats.max),
+        nonZero: pad(stats.nonZero),
         colors: colors ? Array.from(colors, (c) => String(c)) : null,
+        isGene: names.map((_, i) => i < genes.length),
       });
     });
   }
