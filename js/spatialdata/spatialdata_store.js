@@ -85,6 +85,8 @@ export class SpatialDataStore {
     this.tableName = table;
     this.root = zarr.root(new zarr.FetchStore(this.url));
     this._cache = new Map();
+    // Set on the first successful open; see _openNode.
+    this._opener = null;
   }
 
   _once(key, fn) {
@@ -99,12 +101,36 @@ export class SpatialDataStore {
     return ['tables', this.tableName, ...parts].join('/');
   }
 
+  /**
+   * Open a node, remembering which Zarr version this store speaks.
+   *
+   * zarrita's auto-detection probes for v2 metadata first, so every node costs two 404s
+   * (`.zattrs`, `.zgroup`) before the v3 `zarr.json` succeeds -- three requests instead of
+   * one, and a console full of red herrings. Trying v3 first and caching the winner keeps
+   * v2 stores working while making v3 stores quiet.
+   */
+  async _openNode(path, opts) {
+    const location = this.root.resolve(path);
+    if (this._opener) return this._opener(location, opts);
+
+    try {
+      const node = await zarr.open.v3(location, opts);
+      this._opener = zarr.open.v3;
+      return node;
+    } catch {
+      // Either a v2 store or a genuinely absent node; auto-detection tells them apart.
+      const node = await zarr.open(location, opts);
+      this._opener = zarr.open;
+      return node;
+    }
+  }
+
   async _openGroup(path) {
-    return zarr.open(this.root.resolve(path), { kind: 'group' });
+    return this._openNode(path, { kind: 'group' });
   }
 
   async _openArray(path) {
-    return zarr.open(this.root.resolve(path), { kind: 'array' });
+    return this._openNode(path, { kind: 'array' });
   }
 
   /** Read a whole array as a flat typed array (or string array). */
@@ -121,10 +147,23 @@ export class SpatialDataStore {
    * attribute. Categoricals come back as the decoded string values, not codes.
    */
   async _readDataFrameColumn(groupPath, column) {
+    // `column-order` already lists what exists, so an absent column is answered without a
+    // request. Without this, an optional column like var["color"] costs a 404 every load.
+    const group = await this._openGroup(groupPath);
+    const known = group.attrs?.['column-order'];
+    const indexName = group.attrs?._index ?? '_index';
+    if (
+      Array.isArray(known) &&
+      !known.includes(column) &&
+      column !== indexName
+    ) {
+      return null;
+    }
+
     const path = `${groupPath}/${column}`;
     let node;
     try {
-      node = await zarr.open(this.root.resolve(path));
+      node = await this._openNode(path);
     } catch {
       return null;
     }
