@@ -17,6 +17,9 @@ const celldegaParametersFromSpatialTiling = (manifest) => ({
   image_info: [],
   image_format: '.webp',
   ...manifest,
+ // Canonical spatial tiling stores grid geometry inside tile_grid.
+ // Celldega's existing viewport code expects the legacy top-level field.
+ tile_size: manifest?.tile_size ?? manifest?.tile_grid?.tile_size,
 });
 
 export const set_landscape_parameters = async (
