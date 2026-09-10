@@ -153,18 +153,21 @@ export class RowGroupTileReader {
   /**
    * Report once, in the console, whether projection works here.
    *
-   * Reads a row group that actually holds rows: the profile writes an empty row group for
-   * every empty tile, so probing tile 0 would compare two empty reads and prove nothing.
+   * Picks the *largest* row group, not the first non-empty one. The profile writes an
+   * empty row group per empty tile and the first occupied tile often holds a handful of
+   * rows, where the byte comparison rounds to nothing and says less than it appears to.
    */
   async _probeProjection(parquetFile) {
     if (!this.columns) return;
     try {
       const metadata = parquetFile.metadata();
       let rowGroup = -1;
+      let mostRows = 0;
       for (let i = 0; i < metadata.numRowGroups(); i += 1) {
-        if (metadata.rowGroup(i).numRows() > 0) {
+        const rows = metadata.rowGroup(i).numRows();
+        if (rows > mostRows) {
+          mostRows = rows;
           rowGroup = i;
-          break;
         }
       }
       if (rowGroup < 0) return;
@@ -177,8 +180,14 @@ export class RowGroupTileReader {
         toArrow: (wasmTable) => arrow.tableFromIPC(wasmTable.intoIPCStream()),
       });
       if (report && report.ok === false) this.projectionBroken = true;
-    } catch {
-      // A probe must never stop the viewer from loading.
+    } catch (error) {
+      // A probe must not stop the viewer from loading, but it must not fail quietly
+      // either -- a silent probe looks identical to a passing one.
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[RowGroupTileReader] projection probe could not run on ` +
+          `${this.directory || this.url}: ${error.name}: ${error.message}`
+      );
     }
   }
 
@@ -362,6 +371,13 @@ export class RowGroupTileReader {
       //   `[RowGroupTileReader] Chunked mode enabled: ${this.files.length} files, ` +
       //     `${this.totalRowGroups} total row groups, max ${this.maxRowGroupsPerFile} per file`
       // );
+
+      // Chunked is the common case -- 7,535 tiles at 400 per file is 19 files -- so
+      // probing only the single-file branch meant never probing at all.
+      if (this.columns) {
+        const first = await this._getParquetFile(0);
+        await this._probeProjection(first);
+      }
     }
 
     this.initialized = true;

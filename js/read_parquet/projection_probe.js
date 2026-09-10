@@ -83,8 +83,13 @@ export const probeColumnProjection = async ({
     report.ok = projected && rowsMatch;
 
     const kib = (n) => `${(n / 1024).toFixed(1)} KiB`;
-    const saved =
-      report.fullBytes > 0
+    // A file holding only the requested columns has nothing to skip, so 0% is the correct
+    // answer rather than a disappointing one. Saying so avoids reading it as a failure.
+    const nothingToSkip =
+      report.fullColumns.length === report.gotColumns.length;
+    const saved = nothingToSkip
+      ? 'file has no other columns, so nothing to skip'
+      : report.fullBytes > 0
         ? `${((1 - report.thinBytes / report.fullBytes) * 100).toFixed(0)}% fewer bytes`
         : 'byte count unavailable';
 
