@@ -1,4 +1,5 @@
 import { execSync } from 'child_process';
+import { readFileSync } from 'fs';
 import esbuild from 'esbuild';
 import fs from 'fs/promises';
 import path from 'path';
@@ -24,10 +25,24 @@ function buildStamp() {
       return 'unknown';
     }
   };
+  // The resolved parquet-wasm identity, not the range in package.json. An npm alias means
+  // the installed package can be a fork under the same import name, and "is the fork
+  // actually loaded, or a cached upstream build?" is otherwise guesswork.
+  let parquetWasm = 'unknown';
+  try {
+    const meta = JSON.parse(
+      readFileSync('node_modules/parquet-wasm/package.json', 'utf8')
+    );
+    parquetWasm = `${meta.name}@${meta.version}`;
+  } catch {
+    /* leave it unknown rather than assert something false */
+  }
+
   return {
     branch: git('git rev-parse --abbrev-ref HEAD'),
     commit: git('git rev-parse --short HEAD'),
     dirty: git('git status --porcelain') !== '',
+    parquetWasm,
     built: new Date().toISOString(),
   };
 }

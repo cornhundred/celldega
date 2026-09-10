@@ -57,11 +57,11 @@ const spatialDataConfig = () => ({
 });
 
 describe('read options', () => {
-  // parquet-wasm's column projection corrupts the IPC stream it emits (0.7.1 and 0.7.2,
-  // apache-arrow 15 and 18, scalar and nested columns, even an empty array), so no
-  // `columns` argument is ever passed. A SpatialData profile keeps its render columns in
-  // a separate file instead, so reading all of that file is already the projection.
-  test('never requests a column projection', () => {
+  // Column projection was broken upstream (kylebarron/parquet-wasm#810): correctly
+  // projected batches were paired with the unprojected schema, so tableFromIPC threw.
+  // The experimental fork carries the PR #811 fix, so `columns` is requested again -- but
+  // only when the caller declares them, and never after a failure.
+  test('no projection is requested unless columns are declared', () => {
     for (const cfg of [degaFilesConfig(), spatialDataConfig()]) {
       const reader = new RowGroupTileReader('http://x', TILE_GRID, cfg);
       expect(reader._readOptions([0, 1])).toEqual({ rowGroups: [0, 1] });
@@ -69,11 +69,34 @@ describe('read options', () => {
     }
   });
 
-  test('a stray columns key in the manifest is ignored', () => {
+  test('declared columns are requested', () => {
+    const reader = new RowGroupTileReader('http://x', TILE_GRID, {
+      ...spatialDataConfig(),
+      columns: ['display_xy', 'feature_code'],
+    });
+    expect(reader._readOptions([5])).toEqual({
+      rowGroups: [5],
+      columns: ['display_xy', 'feature_code'],
+    });
+  });
+
+  test('an empty columns array is treated as no declaration', () => {
+    const reader = new RowGroupTileReader('http://x', TILE_GRID, {
+      ...spatialDataConfig(),
+      columns: [],
+    });
+    expect(reader._readOptions([5])).toEqual({ rowGroups: [5] });
+  });
+
+  test('a projection failure latches off for the rest of the session', () => {
+    // Testing against an unreleased dependency, so a regression must degrade to slower
+    // reads rather than a blank viewer.
     const reader = new RowGroupTileReader('http://x', TILE_GRID, {
       ...spatialDataConfig(),
       columns: ['display_xy'],
     });
+    expect(reader._readOptions([5])).toHaveProperty('columns');
+    reader.projectionBroken = true;
     expect(reader._readOptions([5])).toEqual({ rowGroups: [5] });
   });
 

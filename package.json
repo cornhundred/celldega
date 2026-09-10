@@ -41,7 +41,7 @@
     "d3": "^7.9.0",
     "deck.gl": "^9.0.12",
     "math.gl": "2.3.3",
-    "parquet-wasm": "^0.7.1",
+    "parquet-wasm": "npm:@cornhundred/parquet-wasm@0.7.2-celldega.0",
     "zarrita": "^0.7.5"
   },
   "devDependencies": {

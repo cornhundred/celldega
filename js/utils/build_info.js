@@ -15,7 +15,13 @@
 const STAMP =
   typeof __CELLDEGA_BUILD__ !== 'undefined'
     ? __CELLDEGA_BUILD__
-    : { branch: 'source', commit: 'unbundled', dirty: false, built: null };
+    : {
+        branch: 'source',
+        commit: 'unbundled',
+        dirty: false,
+        parquetWasm: 'unknown',
+        built: null,
+      };
 
 export const buildInfo = STAMP;
 
@@ -28,9 +34,12 @@ export const announceBuild = (extra = null) => {
 
   const dirty = STAMP.dirty ? ' +local-changes' : '';
   const when = STAMP.built ? ` built ${STAMP.built}` : '';
+  const pw = STAMP.parquetWasm
+    ? `\n           parquet-wasm ${STAMP.parquetWasm}`
+    : '';
   // eslint-disable-next-line no-console
   console.log(
-    `%c[celldega]%c ${STAMP.branch}@${STAMP.commit}${dirty}${when}${extra ? ` — ${extra}` : ''}`,
+    `%c[celldega]%c ${STAMP.branch}@${STAMP.commit}${dirty}${when}${extra ? ` — ${extra}` : ''}${pw}`,
     'font-weight:bold',
     'font-weight:normal'
   );

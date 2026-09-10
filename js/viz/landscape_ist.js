@@ -269,13 +269,25 @@ async function initializeRowGroupReaders(viz_state, base_url) {
     rowGroupFiles.cell_segmentation?.geometry_column;
   viz_state.cell_id_column = rowGroupFiles.cell_segmentation?.cell_id_column;
 
+  // Ask for only the columns each layer actually renders. parquet-wasm projection was
+  // broken upstream (kylebarron/parquet-wasm#810) and is being tested here against an
+  // experimental fork; the reader falls back to full reads if it misbehaves, so declaring
+  // columns is safe even if the fix regresses.
+  const declaredColumns = (entry, names) => {
+    const columns = names.filter(Boolean);
+    return columns.length ? { ...entry, columns } : entry;
+  };
+
   // Initialize transcript row group reader with grid dimensions
   if (rowGroupFiles.transcripts) {
     // Support both chunked (object with files array) and legacy (string path) formats
     viz_state.row_group_readers.trx = new RowGroupTileReader(
       base_url,
       tileGrid,
-      rowGroupFiles.transcripts
+      declaredColumns(rowGroupFiles.transcripts, [
+        viz_state.trx_position_column,
+        viz_state.trx_feature_column,
+      ])
     );
     await viz_state.row_group_readers.trx.initialize();
   }
@@ -286,7 +298,10 @@ async function initializeRowGroupReaders(viz_state, base_url) {
     viz_state.row_group_readers.cell = new RowGroupTileReader(
       base_url,
       tileGrid,
-      rowGroupFiles.cell_segmentation
+      declaredColumns(rowGroupFiles.cell_segmentation, [
+        viz_state.cell_geometry_column,
+        viz_state.cell_id_column,
+      ])
     );
     await viz_state.row_group_readers.cell.initialize();
   }

@@ -19,6 +19,7 @@ import { concatenate_arrow_tables } from '../vector_tile/concatenate_functions';
 
 import { normalizeBaseUrl } from './normalize_base_url';
 import { getPq } from './pqInitializer';
+import { probeColumnProjection } from './projection_probe';
 
 /**
  * RowGroupTileReader class for efficient streaming tile-based data access
@@ -40,6 +41,13 @@ export class RowGroupTileReader {
     this.initialized = false;
     this.requestCache = new Map();
     this.maxCachedReads = 4;
+    // Columns to request, when the caller knows which it needs. Undefined means read
+    // everything, which is the behaviour for any file whose layout is not declared.
+    this.columns =
+      Array.isArray(fileConfig?.columns) && fileConfig.columns.length
+        ? fileConfig.columns
+        : null;
+    this.projectionBroken = false;
 
     // Determine mode: chunked or single file
     if (typeof fileConfig === 'string') {
@@ -97,28 +105,90 @@ export class RowGroupTileReader {
   /**
    * Build the parquet-wasm read options.
    *
-   * Deliberately no column projection: passing `columns` to ParquetFile.read corrupts
-   * the IPC stream parquet-wasm emits, so tableFromIPC then throws. Reproduced on
-   * parquet-wasm 0.7.1 and 0.7.2 with apache-arrow 15 and 18, for scalar and nested
-   * columns alike, and even with an empty `columns` array.
+   * Column projection was previously removed: upstream 0.7.x paired correctly projected
+   * batches with the *unprojected* schema, so the IPC buffer was malformed and
+   * tableFromIPC threw (kylebarron/parquet-wasm#810). The experimental fork carries the
+   * fix from PR #811, so `columns` is requested again when the caller declares which
+   * columns it needs.
    *
-   * Projection is unnecessary anyway: a SpatialData profile puts its render columns in
-   * their own file, so reading every column of that file already transfers only what is
-   * needed.
+   * `projectionBroken` latches on the first failure and every later read goes back to
+   * asking for everything. A viewer that renders slightly more bytes is better than one
+   * that renders nothing, and the fallback is what makes it safe to try this against an
+   * unreleased dependency.
    *
    * @param {Array<number>} rowGroups - Row group indices local to the file being read
-   * @returns {{rowGroups: Array<number>}}
+   * @returns {{rowGroups: Array<number>, columns?: Array<string>}}
    */
   _readOptions(rowGroups) {
-    return { rowGroups };
+    if (!this.columns || this.projectionBroken) {
+      return { rowGroups };
+    }
+    return { rowGroups, columns: this.columns };
+  }
+
+  /**
+   * Read with projection, falling back to a full read once if projection fails.
+   *
+   * @param {object} parquetFile
+   * @param {Array<number>} rowGroups
+   */
+  async _readWithFallback(parquetFile, rowGroups) {
+    const options = this._readOptions(rowGroups);
+    if (!options.columns) {
+      return parquetFile.read(options);
+    }
+    try {
+      return await parquetFile.read(options);
+    } catch (error) {
+      this.projectionBroken = true;
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[RowGroupTileReader] column projection failed (${error.name}: ${error.message}); ` +
+          'falling back to full-column reads for the rest of this session'
+      );
+      return parquetFile.read({ rowGroups });
+    }
+  }
+
+  /**
+   * Report once, in the console, whether projection works here.
+   *
+   * Reads a row group that actually holds rows: the profile writes an empty row group for
+   * every empty tile, so probing tile 0 would compare two empty reads and prove nothing.
+   */
+  async _probeProjection(parquetFile) {
+    if (!this.columns) return;
+    try {
+      const metadata = parquetFile.metadata();
+      let rowGroup = -1;
+      for (let i = 0; i < metadata.numRowGroups(); i += 1) {
+        if (metadata.rowGroup(i).numRows() > 0) {
+          rowGroup = i;
+          break;
+        }
+      }
+      if (rowGroup < 0) return;
+
+      const report = await probeColumnProjection({
+        parquetFile,
+        rowGroup,
+        columns: this.columns,
+        label: this.directory || this.url,
+        toArrow: (wasmTable) => arrow.tableFromIPC(wasmTable.intoIPCStream()),
+      });
+      if (report && report.ok === false) this.projectionBroken = true;
+    } catch {
+      // A probe must never stop the viewer from loading.
+    }
   }
 
   async _readRowGroups(uniqueIndices, options = {}) {
     const returnTablesArray = options.returnTablesArray === true;
 
     if (!this.chunkedMode) {
-      const wasmTable = await this.parquetFile.read(
-        this._readOptions(uniqueIndices)
+      const wasmTable = await this._readWithFallback(
+        this.parquetFile,
+        uniqueIndices
       );
       const arrowIPC = wasmTable.intoIPCStream();
       const table = arrow.tableFromIPC(arrowIPC);
@@ -137,7 +207,7 @@ export class RowGroupTileReader {
     const tables = await Promise.all(
       [...byFile.entries()].map(async ([fileIndex, localIndices]) => {
         const pqFile = await this._getParquetFile(fileIndex);
-        const wasmTable = await pqFile.read(this._readOptions(localIndices));
+        const wasmTable = await this._readWithFallback(pqFile, localIndices);
         const arrowIPC = wasmTable.intoIPCStream();
         return arrow.tableFromIPC(arrowIPC);
       })
@@ -275,6 +345,7 @@ export class RowGroupTileReader {
       // );
       this.parquetFile = await pq.ParquetFile.fromUrl(this.url);
       // Metadata available via this.parquetFile.metadata() if needed
+      await this._probeProjection(this.parquetFile);
     } else {
       // Chunked mode - check range support on first file
       const firstFileUrl = `${this.baseUrl}/${this.directory}/${this.files[0]}`;
