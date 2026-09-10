@@ -7,10 +7,14 @@ import { concatenate_polygon_data } from '../vector_tile/concatenate_functions';
  * @param {Object} coordChunk - The coordinate level chunk data
  * @returns {Object|null} - Polygon data object with length, startIndices, and attributes
  */
-function getPolygonDataFromChunk(polygonChunk, ringChunk, coordChunk) {
+function getPolygonDataFromChunk(
+  polygonChunk,
+  ringChunk,
+  coordChunk,
+  yCoordChunk = null
+) {
   const polygonOffsets = polygonChunk.valueOffsets;
   const ringOffsets = ringChunk.valueOffsets;
-  const flatCoordinateArray = coordChunk.values;
 
   // Number of polygons is offsets length - 1
   const numPolygons = polygonOffsets.length - 1;
@@ -22,17 +26,23 @@ function getPolygonDataFromChunk(polygonChunk, ringChunk, coordChunk) {
     resolvedIndices[i] = ringOffsets[ringIdx];
   }
 
+  const attributes = yCoordChunk
+    ? {
+        getPolygonX: { value: coordChunk.values, size: 1 },
+        getPolygonY: { value: yCoordChunk.values, size: 1 },
+      }
+    : { getPolygon: { value: coordChunk.values, size: 2 } };
+
   return {
     length: numPolygons,
     startIndices: resolvedIndices,
-    attributes: {
-      getPolygon: { value: flatCoordinateArray, size: 2 },
-    },
+    attributes,
   };
 }
 
 // apache-arrow Type ids used below.
 const ARROW_LIST = 12;
+const ARROW_STRUCT = 13;
 const ARROW_FIXED_SIZE_LIST = 16;
 
 /**
@@ -78,14 +88,13 @@ export const get_polygon_data = (arrowTable, geometryColumnName) => {
   const ringChild = geometryColumn.getChildAt(0);
   const vertexChild = ringChild?.getChildAt(0);
 
-  // Reject only the layout that would be read *incorrectly*: GeoArrow permits
-  // struct<x, y> coordinates (which is what geopandas emits), and there getChildAt(0)
-  // returns the x child alone, silently rendering wrong polygons instead of failing.
-  // List and FixedSizeList are both interleaved and both fine.
+  // GeoArrow permits struct<x, y> coordinates, which geopandas emits for canonical
+  // Shapes. Keep those child buffers separate; the path conversion already walks every
+  // vertex, so it can pair x and y without an additional interleaving allocation.
   const vertexTypeId = vertexChild?.data[0]?.type?.typeId;
   if (
     !vertexChild ||
-    (vertexTypeId !== ARROW_LIST && vertexTypeId !== ARROW_FIXED_SIZE_LIST)
+    ![ARROW_LIST, ARROW_STRUCT, ARROW_FIXED_SIZE_LIST].includes(vertexTypeId)
   ) {
     // console.warn(
     //   `[get_polygon_data] unsupported vertex layout (typeId ${vertexTypeId});` +
@@ -95,13 +104,19 @@ export const get_polygon_data = (arrowTable, geometryColumnName) => {
   }
 
   const coordChild = vertexChild.getChildAt(0);
+  const yCoordChild =
+    vertexTypeId === ARROW_STRUCT ? vertexChild.getChildAt(1) : null;
+  if (!coordChild || (vertexTypeId === ARROW_STRUCT && !yCoordChild)) {
+    return null;
+  }
 
   // For single chunk (original behavior), use direct extraction
   if (numChunks === 1) {
     return getPolygonDataFromChunk(
       dataChunks[0],
       ringChild.data[0],
-      coordChild.data[0]
+      coordChild.data[0],
+      yCoordChild?.data[0]
     );
   }
 
@@ -122,7 +137,8 @@ export const get_polygon_data = (arrowTable, geometryColumnName) => {
     const chunkData = getPolygonDataFromChunk(
       polygonChunk,
       ringChunk,
-      coordChunk
+      coordChunk,
+      yCoordChild?.data[chunkIdx]
     );
     if (chunkData && chunkData.length > 0) {
       chunkPolygonData.push(chunkData);

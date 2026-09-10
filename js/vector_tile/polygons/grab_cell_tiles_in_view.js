@@ -86,7 +86,12 @@ export const grab_cell_tiles_in_view = async (
       cell_table,
       viz_state.cell_geometry_column
     );
-    const polygonPathsConcat = extractPolygonPaths(polygon_data);
+    const polygonPathsConcat = extractPolygonPaths(
+      polygon_data,
+      viz_state.cell_geometry_encoding === 'geoarrow.polygon'
+        ? viz_state.cell_display_transform
+        : null
+    );
 
     return polygonPathsConcat;
   }

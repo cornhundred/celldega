@@ -55,6 +55,13 @@ export class RowGroupTileReader {
       this.chunkedMode = false;
       this.url = `${baseUrl}/${fileConfig}`;
       this.parquetFile = null;
+    } else if (typeof fileConfig === 'object' && fileConfig.path) {
+      // Canonical Shapes are a single Parquet file when the grid fits in one
+      // chunk. The root manifest records that form as `path`, matching the
+      // profile validator and avoiding a fictitious directory/files pair.
+      this.chunkedMode = false;
+      this.url = `${baseUrl}/${fileConfig.path}`;
+      this.parquetFile = null;
     } else if (typeof fileConfig === 'object' && fileConfig.files) {
       // Check if we can use single-file mode (only 1 chunk file)
       if (fileConfig.files.length === 1) {

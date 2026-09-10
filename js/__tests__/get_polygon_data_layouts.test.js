@@ -86,10 +86,33 @@ describe('vertex layouts', () => {
     );
   });
 
-  test('rejects struct<x, y> rather than reading x as if interleaved', () => {
-    // geopandas' geoarrow output. Walking child 0 blindly yields the x column alone and
-    // renders wrong polygons with no error, so failing is the correct behaviour.
-    expect(get_polygon_data(buildTable(STRUCT))).toBeNull();
+  test('accepts canonical GeoArrow struct<x, y> without interleaving', () => {
+    const xs = vec(3, { values: Float64Array.from([0, 4, 0]), length: 3 });
+    const ys = vec(3, { values: Float64Array.from([0, 0, 4]), length: 3 });
+    const vertex = {
+      data: [{ type: { typeId: STRUCT }, length: 3 }],
+      getChildAt: (i) => [xs, ys][i],
+    };
+    const ring = vec(
+      LIST,
+      { valueOffsets: Int32Array.from([0, 3]), length: 1 },
+      vertex
+    );
+    const polygon = vec(
+      LIST,
+      { valueOffsets: Int32Array.from([0, 1]), length: 1 },
+      ring
+    );
+    const table = {
+      getChild: (name) => (name === 'geometry' ? polygon : null),
+      getChildAt: () => polygon,
+    };
+
+    const out = get_polygon_data(table, 'geometry');
+    expect(out).not.toBeNull();
+    expect(out.attributes.getPolygon).toBeUndefined();
+    expect(Array.from(out.attributes.getPolygonX.value)).toEqual([0, 4, 0]);
+    expect(Array.from(out.attributes.getPolygonY.value)).toEqual([0, 0, 4]);
   });
 
   test('returns null when the named column is absent', () => {

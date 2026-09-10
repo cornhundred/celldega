@@ -264,10 +264,20 @@ async function initializeRowGroupReaders(viz_state, base_url) {
   // defaults (geometry / name); a SpatialData profile names its render columns instead.
   // Leaving these undefined is what preserves DegaFiles behaviour.
   viz_state.trx_position_column = rowGroupFiles.transcripts?.position_column;
+  viz_state.trx_position_columns = rowGroupFiles.transcripts?.position_columns;
+  viz_state.trx_position_encoding =
+    rowGroupFiles.transcripts?.position_encoding;
   viz_state.trx_feature_column = rowGroupFiles.transcripts?.feature_column;
+  viz_state.trx_feature_encoding = rowGroupFiles.transcripts?.feature_encoding;
+  viz_state.trx_display_transform =
+    rowGroupFiles.transcripts?.display_transform;
   viz_state.cell_geometry_column =
     rowGroupFiles.cell_segmentation?.geometry_column;
+  viz_state.cell_geometry_encoding =
+    rowGroupFiles.cell_segmentation?.geometry_encoding;
   viz_state.cell_id_column = rowGroupFiles.cell_segmentation?.cell_id_column;
+  viz_state.cell_display_transform =
+    rowGroupFiles.cell_segmentation?.display_transform;
 
   // Ask for only the columns each layer actually renders. parquet-wasm projection was
   // broken upstream (kylebarron/parquet-wasm#810) and is being tested here against an
@@ -286,6 +296,7 @@ async function initializeRowGroupReaders(viz_state, base_url) {
       tileGrid,
       declaredColumns(rowGroupFiles.transcripts, [
         viz_state.trx_position_column,
+        ...(viz_state.trx_position_columns || []),
         viz_state.trx_feature_column,
       ])
     );

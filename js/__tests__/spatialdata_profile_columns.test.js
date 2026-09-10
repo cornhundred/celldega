@@ -105,6 +105,16 @@ describe('read options', () => {
     expect(reader.url).toBe('http://x/trx.parquet');
   });
 
+  test('canonical single-file path config works', () => {
+    const reader = new RowGroupTileReader('http://x/store.zarr', TILE_GRID, {
+      path: 'shapes/cells/shapes.parquet',
+      columns: ['geometry', 'cell_code'],
+    });
+    expect(reader.chunkedMode).toBe(false);
+    expect(reader.url).toBe('http://x/store.zarr/shapes/cells/shapes.parquet');
+    expect(reader.columns).toEqual(['geometry', 'cell_code']);
+  });
+
   test('relative directories resolve into a SpatialData store', () => {
     const reader = new RowGroupTileReader(
       'http://x/store.zarr/visualization/prof',
