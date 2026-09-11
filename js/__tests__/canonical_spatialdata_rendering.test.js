@@ -161,6 +161,9 @@ describe('separate-coordinate shader', () => {
     expect(shader).toContain('in float instanceX;');
     expect(shader).toContain('in float instanceY;');
     expect(shader).toContain('displayTransform * vec3(instanceX, instanceY');
+    expect(shader).toContain(
+      'vec3 instancePositions = vec3(transformedPosition.xy, 0.0);'
+    );
     expect(shader).not.toContain('in vec3 instancePositions;');
   });
 });

@@ -27,7 +27,7 @@ export class SeparatedScatterplotLayer extends ScatterplotLayer {
     const replacement =
       'in float instanceX;\nin float instanceY;\nuniform mat3 displayTransform;';
     const main = 'void main(void) {';
-    const position = `${main}\n  vec3 instancePositions = displayTransform * vec3(instanceX, instanceY, 1.0);\n  vec3 instancePositions64Low = vec3(0.0);`;
+    const position = `${main}\n  vec3 transformedPosition = displayTransform * vec3(instanceX, instanceY, 1.0);\n  vec3 instancePositions = vec3(transformedPosition.xy, 0.0);\n  vec3 instancePositions64Low = vec3(0.0);`;
 
     return {
       ...shaders,
